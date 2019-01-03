@@ -99,6 +99,9 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // responseMessage response to the original slackbutton enabled message.
 // It removes button and replace it with message which indicate how bot will work
 func responseMessage(w http.ResponseWriter, original slack.Message, title, value string) {
+	if len(original.Attachments) == 0 {
+		original.Attachments = append(original.Attachments, slack.Attachment{})
+	}
 	original.Attachments[0].Actions = []slack.AttachmentAction{} // empty buttons
 	original.Attachments[0].Fields = []slack.AttachmentField{
 		{
