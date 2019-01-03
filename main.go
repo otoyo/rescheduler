@@ -42,9 +42,9 @@ func _main(args []string) int {
 
 	// Listening slack event and response
 	log.Printf("[INFO] Start slack event listening")
-	client := slack.New(env.SlackBotToken)
+	slackClient := slack.New(env.SlackBotToken)
 	slackListener := &SlackListener{
-		client:    client,
+		client:    slackClient,
 		botID:     env.SlackBotID,
 		channelID: env.SlackChannelID,
 	}
