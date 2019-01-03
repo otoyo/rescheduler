@@ -15,18 +15,18 @@ type envConfig struct {
 	// Port is server port to be listened.
 	Port string `envconfig:"PORT" default:"3000"`
 
-	// BotToken is bot user token to access to slack API.
-	BotToken string `envconfig:"BOT_TOKEN" required:"true"`
+	// SlackBotToken is bot user token to access to slack API.
+	SlackBotToken string `envconfig:"SLACK_BOT_TOKEN" required:"true"`
 
-	// VerificationToken is used to validate interactive messages from slack.
-	VerificationToken string `envconfig:"VERIFICATION_TOKEN" required:"true"`
+	// SlackVerificationToken is used to validate interactive messages from slack.
+	SlackVerificationToken string `envconfig:"SLACK_VERIFICATION_TOKEN" required:"true"`
 
-	// BotID is bot user ID.
-	BotID string `envconfig:"BOT_ID" required:"true"`
+	// SlackBotID is bot user ID.
+	SlackBotID string `envconfig:"SLACK_BOT_ID" required:"true"`
 
-	// ChannelID is slack channel ID where bot is working.
+	// SlackChannelID is slack channel ID where bot is working.
 	// Bot responses to the mention in this channel.
-	ChannelID string `envconfig:"CHANNEL_ID" required:"true"`
+	SlackChannelID string `envconfig:"SLACK_CHANNEL_ID" required:"true"`
 }
 
 func main() {
@@ -42,18 +42,18 @@ func _main(args []string) int {
 
 	// Listening slack event and response
 	log.Printf("[INFO] Start slack event listening")
-	client := slack.New(env.BotToken)
+	client := slack.New(env.SlackBotToken)
 	slackListener := &SlackListener{
 		client:    client,
-		botID:     env.BotID,
-		channelID: env.ChannelID,
+		botID:     env.SlackBotID,
+		channelID: env.SlackChannelID,
 	}
 	go slackListener.ListenAndResponse()
 
 	// Register handler to receive interactive message
 	// responses from slack (kicked by user action)
 	http.Handle("/interaction", interactionHandler{
-		verificationToken: env.VerificationToken,
+		verificationToken: env.SlackVerificationToken,
 	})
 
 	log.Printf("[INFO] Server listening on :%s", env.Port)
