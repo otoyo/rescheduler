@@ -53,13 +53,17 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Overwrite original message.
+	originalMessage := message.OriginalMessage
+	originalMessage.ReplaceOriginal = true
+	originalMessage.ResponseType = "in_channel"
+
 	action := message.Actions[0]
 	switch action.Name {
 	case actionSelect:
 		value := action.SelectedOptions[0].Value
 
-		// Overwrite original drop down message.
-		originalMessage := message.OriginalMessage
+		// Overwrite original drop down.
 		originalMessage.Attachments[0].Text = fmt.Sprintf("OK to order %s ?", strings.Title(value))
 		originalMessage.Attachments[0].Actions = []slack.AttachmentAction{
 			{
@@ -83,11 +87,11 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case actionStart:
 		title := ":ok: your order was submitted! yay!"
-		responseMessage(w, message.OriginalMessage, title, "")
+		responseMessage(w, originalMessage, title, "")
 		return
 	case actionCancel:
 		title := fmt.Sprintf(":x: @%s canceled the request", message.User.Name)
-		responseMessage(w, message.OriginalMessage, title, "")
+		responseMessage(w, originalMessage, title, "")
 		return
 	default:
 		log.Printf("[ERROR] ]Invalid action was submitted: %s", action.Name)
