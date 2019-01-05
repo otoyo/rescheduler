@@ -52,6 +52,11 @@ func (s *SlackListener) handleMessageEvent(ev *slack.MessageEvent) error {
 		return nil
 	}
 
+	// Ignore messages with subtype
+	if ev.Msg.SubType != "" {
+		return nil
+	}
+
 	// If channelID is set, bot only responses in specific channel. Ignore else.
 	if s.channelID != "" && ev.Channel != s.channelID {
 		return nil
