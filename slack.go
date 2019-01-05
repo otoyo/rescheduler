@@ -62,12 +62,7 @@ func (s *SlackListener) handleMessageEvent(ev *slack.MessageEvent) error {
 	// Parse message
 	m := strings.Split(strings.TrimSpace(ev.Msg.Text), " ")[1:]
 
-	if ev.User != s.ownerID {
-		attachment = &slack.Attachment{
-			Text:  "You are not permitted.",
-			Color: "#ff7f50",
-		}
-	} else if len(m) != 2 || m[0] != "search" {
+	if len(m) != 2 || m[0] != "search" {
 		attachment = &slack.Attachment{
 			Text:  "Would you mind ordering like `@rescheduler search Foo`?",
 			Color: "#00bfff",
