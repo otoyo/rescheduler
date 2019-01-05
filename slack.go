@@ -119,9 +119,7 @@ func (s *SlackListener) setupAttachment(pager *garoon.EventPager) (*slack.Attach
 	const layout = "2006-01-02 15:04"
 
 	var options []slack.AttachmentActionOption
-	for i := 0; i < len(pager.Events); i++ {
-		ev := pager.Events[i]
-
+	for _, ev := range pager.Events {
 		options = append(options, slack.AttachmentActionOption{
 			Text:  fmt.Sprintf("%s %s", ev.Start.DateTime.Format(layout), ev.Subject),
 			Value: ev.ID,
