@@ -40,6 +40,9 @@ type envConfig struct {
 
 	// GaroonPassword is login password for Garoon
 	GaroonPassword string `envconfig:"GAROON_PASSWORD" required:"true"`
+
+	// GaroonExcludingFacilityCode is login password for Garoon
+	GaroonExcludingFacilityCode string `envconfig:"GAROON_EXCLUDING_FACILITY_CODE"`
 }
 
 func main() {
@@ -74,9 +77,10 @@ func _main(args []string) int {
 	// Register handler to receive interactive message
 	// responses from slack (kicked by user action)
 	http.Handle("/interaction", interactionHandler{
-		verificationToken: env.SlackVerificationToken,
-		ownerSlackID:      env.SlackUserID,
-		garoonClient:      garoonClient,
+		verificationToken:           env.SlackVerificationToken,
+		ownerSlackID:                env.SlackUserID,
+		garoonClient:                garoonClient,
+		garoonExcludingFacilityCode: env.GaroonExcludingFacilityCode,
 	})
 
 	log.Printf("[INFO] Server listening on :%s", env.Port)
