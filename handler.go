@@ -8,16 +8,19 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/nlopes/slack"
+	"github.com/otoyo/garoon"
 )
 
 // interactionHandler handles interactive message response.
 type interactionHandler struct {
-	ownerSlackID      string
-	slackClient       *slack.Client
-	garoonClient      *garoon.Client
-	verificationToken string
+	ownerSlackID                string
+	slackClient                 *slack.Client
+	garoonClient                *garoon.Client
+	garoonExcludingFacilityCode string
+	verificationToken           string
 }
 
 func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -62,37 +65,42 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	action := message.Actions[0]
 	switch action.Name {
-	case actionSelect:
-		value := action.SelectedOptions[0].Value
+	case actionSelectTarget:
+		if len(originalMessage.Attachments) == 0 {
+			log.Printf("[ERROR] no attachments in actionSelectTarget")
+			return
+		}
 
-		// Overwrite original drop down.
-		originalMessage.Attachments[0].Text = fmt.Sprintf("OK to order %s ?", strings.Title(value))
-		originalMessage.Attachments[0].Actions = []slack.AttachmentAction{
-			{
-				Name:  actionStart,
-				Text:  "Yes",
-				Type:  "button",
-				Value: "start",
-				Style: "primary",
-			},
-			{
-				Name:  actionCancel,
-				Text:  "No",
-				Type:  "button",
-				Style: "danger",
-			},
+		eventID := action.SelectedOptions[0].Value
+		ev, err := h.garoonClient.FindEvent(eventID)
+		if err != nil {
+			log.Printf("[ERROR] failed to find the event: %s", err)
+			return
+		}
+
+		attachment := &originalMessage.Attachments[0]
+		if err = h.setupAttachment(message.User.ID, ev, attachment); err != nil {
+			log.Printf("[ERROR] failed to setup attachment: %s", err)
+			return
 		}
 
 		w.Header().Add("Content-type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(&originalMessage)
 		return
-	case actionStart:
-		title := ":ok: your order was submitted! yay!"
+	case actionSelectTime:
+		s := strings.Split(action.SelectedOptions[0].Value, ",")
+
+		if err := h.updateEvent(s[0], s[1], s[2], s[3]); err != nil {
+			log.Printf("[ERROR] failed to update the event: %s", err)
+			return
+		}
+
+		title := "The schedule has been rescheduled! :white_check_mark:"
 		responseMessage(w, originalMessage, title, "")
 		return
 	case actionCancel:
-		title := fmt.Sprintf(":x: @%s canceled the request", message.User.Name)
+		title := fmt.Sprintf("@%s canceled.", message.User.Name)
 		responseMessage(w, originalMessage, title, "")
 		return
 	default:
@@ -120,4 +128,200 @@ func responseMessage(w http.ResponseWriter, original slack.Message, title, value
 	w.Header().Add("Content-type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(&original)
+}
+
+func (h interactionHandler) setupAttachment(messageUserID string, ev *garoon.Event, attachment *slack.Attachment) error {
+	if ev.IsAllDay || ev.IsStartOnly {
+		attachment.Text = "No end MTG does not supported."
+		attachment.Actions = nil
+		return nil
+	}
+
+	if len(ev.Facilities) > 1 {
+		attachment.Text = "Multiple MTG rooms does not supported."
+		attachment.Actions = nil
+		return nil
+	}
+
+	availableTimes, err := h.searchAvailableTimes(ev)
+	if err != nil {
+		log.Printf("[ERROR] failed to search availableTimes: %s", err)
+		return err
+	}
+
+	if len(*availableTimes) == 0 {
+		attachment.Title = "No schedules found."
+		attachment.Actions = nil
+		return nil
+	}
+
+	const layoutForRead = "2006-01-02 15:04"
+	const layoutForValue = "2006-01-02T15:04:05-07:00"
+	var text string
+	var options []slack.AttachmentActionOption
+
+	for _, t := range *availableTimes {
+		start := t.Start.DateTime
+		end := t.End.DateTime
+
+		text = fmt.Sprintf("%s%s %s\n", text, start.Format(layoutForRead), t.Facility.Name)
+		options = append(options, slack.AttachmentActionOption{
+			Text:  fmt.Sprintf("%s %s", start.Format(layoutForRead), t.Facility.Name),
+			Value: fmt.Sprintf("%s,%s,%s,%s", ev.ID, start.Format(layoutForValue), end.Format(layoutForValue), t.Facility.ID),
+		})
+	}
+	attachment.Text = text
+
+	if messageUserID != h.ownerSlackID {
+		attachment.Title = fmt.Sprintf("%d schedules found.", len(*availableTimes))
+		attachment.Actions = nil
+		return nil
+	}
+
+	attachment.Title = "Which shedule would you like?"
+	attachment.Actions = []slack.AttachmentAction{
+		{
+			Name:    actionSelectTime,
+			Type:    "select",
+			Options: options,
+		},
+		{
+			Name:  actionCancel,
+			Text:  "Cancel",
+			Type:  "button",
+			Style: "danger",
+		},
+	}
+
+	return nil
+}
+
+func (h interactionHandler) searchAvailableTimes(ev *garoon.Event) (*[]garoon.AvailableTime, error) {
+	facilities, err := h.getFacilitiesFromOwnFacilityGroup(&ev.Facilities)
+	if err != nil {
+		log.Printf("[ERROR] failed to get facilities: %s", err)
+		return nil, err
+	}
+
+	param, err := h.buildAvailableTimeParameter(ev, facilities)
+	if err != nil {
+		log.Printf("[ERROR] failed to build AvailableTimeParamter: %s", err)
+		return nil, err
+	}
+
+	pager, err := h.garoonClient.SearchAvailableTimes(param)
+	if err != nil {
+		log.Printf("[ERROR] failed to get AvailableTimes: %s", err)
+		return nil, err
+	}
+
+	return &pager.AvailableTimes, nil
+}
+
+func (h interactionHandler) buildAvailableTimeParameter(ev *garoon.Event, facilities *[]garoon.Facility) (*garoon.AvailableTimeParameter, error) {
+	ranges, err := h.buildTimeRanges(ev)
+	if err != nil {
+		return nil, err
+	}
+
+	interval := ev.End.DateTime.Sub(ev.Start.DateTime)
+
+	param := garoon.AvailableTimeParameter{
+		TimeRanges:              *ranges,
+		TimeInterval:            fmt.Sprintf("%2.0f", interval.Minutes()),
+		Attendees:               ev.Attendees,
+		Facilities:              *facilities,
+		FacilitySearchCondition: "OR",
+	}
+
+	return &param, nil
+}
+
+func (h interactionHandler) buildTimeRanges(ev *garoon.Event) (*[]garoon.DateTimePeriod, error) {
+	periods := []garoon.DateTimePeriod{}
+
+	end := ev.End.DateTime
+	periods = append(periods, garoon.DateTimePeriod{
+		Start: end,
+		End:   time.Date(end.Year(), end.Month(), end.Day(), 19, 0, 0, 0, time.Local),
+	})
+
+	for i := 1; i <= 7; i++ {
+		d := end.AddDate(0, 0, i)
+		if d.Weekday() == 0 || d.Weekday() == 6 {
+			continue
+		}
+
+		periods = append(periods, garoon.DateTimePeriod{
+			Start: time.Date(d.Year(), d.Month(), d.Day(), 10, 0, 0, 0, time.Local),
+			End:   time.Date(d.Year(), d.Month(), d.Day(), 19, 0, 0, 0, time.Local),
+		})
+	}
+
+	return &periods, nil
+}
+
+func (h interactionHandler) getFacilitiesFromOwnFacilityGroup(facilities *[]garoon.Facility) (*[]garoon.Facility, error) {
+	if len(*facilities) == 0 {
+		return nil, nil
+	}
+
+	v := url.Values{}
+	v.Add("name", (*facilities)[0].Name)
+
+	pager, err := h.garoonClient.GetFacilities(v)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(pager.Facilities) == 0 {
+		return nil, fmt.Errorf("target facilities not found.")
+	}
+
+	v = url.Values{}
+	facilityGroupID := pager.Facilities[0].FacilityGroup
+	pager, err = h.garoonClient.GetFacilitiesByFacilityGroup(facilityGroupID, v)
+	if err != nil {
+		return nil, fmt.Errorf("facilities in the facility group not found.")
+	}
+
+	// Exclude facilities
+	codes := strings.Split(h.garoonExcludingFacilityCode, ",")
+	var filteredFacilities []garoon.Facility
+	for _, f := range pager.Facilities {
+		isIncluded := false
+		for _, code := range codes {
+			if f.Code == code {
+				isIncluded = true
+			}
+		}
+		if !isIncluded {
+			filteredFacilities = append(filteredFacilities, f)
+		}
+	}
+
+	return &filteredFacilities, nil
+}
+
+func (h interactionHandler) updateEvent(eventID, start, end, facilityID string) error {
+	ev, err := h.garoonClient.FindEvent(eventID)
+	if err != nil {
+		return fmt.Errorf("failed to find the event.")
+	}
+
+	const layout = "2006-01-02T15:04:05-07:00"
+	ev.Start.DateTime, _ = time.Parse(layout, start)
+	ev.End.DateTime, _ = time.Parse(layout, end)
+	ev.Facilities = []garoon.Facility{
+		garoon.Facility{
+			ID: facilityID,
+		},
+	}
+
+	_, err = h.garoonClient.UpdateEvent(ev)
+	if err != nil {
+		return fmt.Errorf("failed to update the event.")
+	}
+
+	return nil
 }
