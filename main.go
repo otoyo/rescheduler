@@ -25,9 +25,9 @@ type envConfig struct {
 	// SlackBotID is bot user ID.
 	SlackBotID string `envconfig:"SLACK_BOT_ID" required:"true"`
 
-	// SlackChannelID is slack channel ID where bot is working.
+	// SlackChannelID is slack channel ID.
 	// Bot responses to the mention in this channel.
-	SlackChannelID string `envconfig:"SLACK_CHANNEL_ID" required:"true"`
+	SlackChannelID string `envconfig:"SLACK_CHANNEL_ID"`
 
 	// SlackUserID is your slack user ID.
 	SlackUserID string `envconfig:"SLACK_USER_ID" required:"true"`
