@@ -7,6 +7,7 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/nlopes/slack"
+	"github.com/otoyo/garoon"
 )
 
 // https://api.slack.com/slack-apps
@@ -27,6 +28,15 @@ type envConfig struct {
 	// SlackChannelID is slack channel ID where bot is working.
 	// Bot responses to the mention in this channel.
 	SlackChannelID string `envconfig:"SLACK_CHANNEL_ID" required:"true"`
+
+	// GaroonURL is URL for Garoon REST API
+	GaroonSubdomain string `envconfig:"GAROON_SUBDOMAIN" required:"true"`
+
+	// GaroonUser is login user for Garoon
+	GaroonUser string `envconfig:"GAROON_USER" required:"true"`
+
+	// GaroonPassword is login password for Garoon
+	GaroonPassword string `envconfig:"GAROON_PASSWORD" required:"true"`
 }
 
 func main() {
@@ -40,13 +50,20 @@ func _main(args []string) int {
 		return 1
 	}
 
+	garoonClient, err := garoon.NewClient(env.GaroonSubdomain, env.GaroonUser, env.GaroonPassword)
+	if err != nil {
+		log.Printf("[ERROR] Failed to create Garoon client: %s", err)
+		return 1
+	}
+
 	// Listening slack event and response
 	log.Printf("[INFO] Start slack event listening")
 	slackClient := slack.New(env.SlackBotToken)
 	slackListener := &SlackListener{
-		client:    slackClient,
-		botID:     env.SlackBotID,
-		channelID: env.SlackChannelID,
+		client:       slackClient,
+		botID:        env.SlackBotID,
+		channelID:    env.SlackChannelID,
+		garoonClient: garoonClient,
 	}
 	go slackListener.ListenAndResponse()
 

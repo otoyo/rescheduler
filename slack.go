@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/nlopes/slack"
+	"github.com/otoyo/garoon"
 )
 
 const (
@@ -16,9 +17,10 @@ const (
 )
 
 type SlackListener struct {
-	client    *slack.Client
-	botID     string
-	channelID string
+	client       *slack.Client
+	botID        string
+	channelID    string
+	garoonClient *garoon.Client
 }
 
 // LstenAndResponse listens slack events and response
