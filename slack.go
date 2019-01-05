@@ -130,7 +130,7 @@ func (s *SlackListener) setupAttachment(pager *garoon.EventPager) (*slack.Attach
 
 	// value is passed to message handler when request is approved.
 	attachment := &slack.Attachment{
-		Text:       "Which schedule do you intend? :calendar:",
+		Title:      "Which schedule do you intend? :calendar:",
 		Color:      "#32cd32",
 		CallbackID: "target",
 		Actions: []slack.AttachmentAction{
