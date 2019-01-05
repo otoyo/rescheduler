@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/nlopes/slack"
 	"github.com/otoyo/garoon"
@@ -11,9 +13,9 @@ import (
 
 const (
 	// action is used for slack attament action.
-	actionSelect = "select"
-	actionStart  = "start"
-	actionCancel = "cancel"
+	actionSelectTarget = "selectTarget"
+	actionSelectTime   = "selectTime"
+	actionCancel       = "cancel"
 )
 
 type SlackListener struct {
@@ -45,56 +47,98 @@ func (s *SlackListener) ListenAndResponse() {
 
 // handleMesageEvent handles message events.
 func (s *SlackListener) handleMessageEvent(ev *slack.MessageEvent) error {
-	// Only response in specific channel. Ignore else.
-	if ev.Channel != s.channelID {
-		log.Printf("%s %s", ev.Channel, ev.Msg.Text)
-		return nil
-	}
-
 	// Only response mention to bot. Ignore else.
 	if !strings.HasPrefix(ev.Msg.Text, fmt.Sprintf("<@%s> ", s.botID)) {
 		return nil
 	}
 
+	// If channelID is set, bot only responses in specific channel. Ignore else.
+	if s.channelID != "" && ev.Channel != s.channelID {
+		return nil
+	}
+
+	var attachment *slack.Attachment
+
 	// Parse message
 	m := strings.Split(strings.TrimSpace(ev.Msg.Text), " ")[1:]
-	if len(m) == 0 || m[0] != "hey" {
-		return fmt.Errorf("invalid message")
+
+	if ev.User != s.ownerID {
+		attachment = &slack.Attachment{
+			Text:  "You are not permitted.",
+			Color: "#ff7f50",
+		}
+	} else if len(m) != 2 || m[0] != "search" {
+		attachment = &slack.Attachment{
+			Text:  "Would you mind ordering like `@rescheduler search Foo`?",
+			Color: "#00bfff",
+		}
+	} else {
+		// Search MTG schedules by keyword
+		pager, err := s.searchSchedules(m[1])
+		if err != nil {
+			return err
+		}
+
+		attachment, err = s.setupAttachment(pager)
+		if err != nil {
+			return err
+		}
+	}
+
+	params := slack.PostMessageParameters{
+		Attachments: []slack.Attachment{
+			*attachment,
+		},
+	}
+
+	if _, _, err := s.client.PostMessage(ev.Channel, "", params); err != nil {
+		return fmt.Errorf("failed to post message: %s", err)
+	}
+
+	return nil
+}
+
+func (s *SlackListener) searchSchedules(keyword string) (*garoon.EventPager, error) {
+	const layout = "2006-01-02T15:04:05-07:00"
+
+	v := url.Values{}
+	v.Add("keyword", keyword)
+	v.Add("excludeFromSearch", "company,notes,comments")
+	v.Add("rangeStart", time.Now().Format(layout))
+	v.Add("orderBy", "createdAt asc")
+
+	pager, err := s.garoonClient.SearchEvents(v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search schedules: %s", err)
+	}
+
+	return pager, nil
+}
+
+func (s *SlackListener) setupAttachment(pager *garoon.EventPager) (*slack.Attachment, error) {
+	const layout = "2006-01-02 15:04"
+
+	var options []slack.AttachmentActionOption
+	for i := 0; i < len(pager.Events); i++ {
+		ev := pager.Events[i]
+
+		options = append(options, slack.AttachmentActionOption{
+			Text:  fmt.Sprintf("%s %s", ev.Start.DateTime.Format(layout), ev.Subject),
+			Value: ev.ID,
+		})
 	}
 
 	// value is passed to message handler when request is approved.
-	attachment := slack.Attachment{
-		Text:       "Which beer do you want? :beer:",
-		Color:      "#f9a41b",
-		CallbackID: "beer",
+	attachment := &slack.Attachment{
+		Text:       "Which schedule do you intend? :calendar:",
+		Color:      "#32cd32",
+		CallbackID: "target",
 		Actions: []slack.AttachmentAction{
 			{
-				Name: actionSelect,
-				Type: "select",
-				Options: []slack.AttachmentActionOption{
-					{
-						Text:  "Asahi Super Dry",
-						Value: "Asahi Super Dry",
-					},
-					{
-						Text:  "Kirin Lager Beer",
-						Value: "Kirin Lager Beer",
-					},
-					{
-						Text:  "Sapporo Black Label",
-						Value: "Sapporo Black Label",
-					},
-					{
-						Text:  "Suntory Malts",
-						Value: "Suntory Malts",
-					},
-					{
-						Text:  "Yona Yona Ale",
-						Value: "Yona Yona Ale",
-					},
-				},
+				Name:    actionSelectTarget,
+				Type:    "select",
+				Options: options,
 			},
-
 			{
 				Name:  actionCancel,
 				Text:  "Cancel",
@@ -104,15 +148,5 @@ func (s *SlackListener) handleMessageEvent(ev *slack.MessageEvent) error {
 		},
 	}
 
-	params := slack.PostMessageParameters{
-		Attachments: []slack.Attachment{
-			attachment,
-		},
-	}
-
-	if _, _, err := s.client.PostMessage(ev.Channel, "", params); err != nil {
-		return fmt.Errorf("failed to post message: %s", err)
-	}
-
-	return nil
+	return attachment, nil
 }
