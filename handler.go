@@ -241,19 +241,24 @@ func (h interactionHandler) buildTimeRanges(ev *garoon.Event) (*[]garoon.DateTim
 	periods := []garoon.DateTimePeriod{}
 
 	end := ev.End.DateTime
-	periods = append(periods, garoon.DateTimePeriod{
-		Start: end,
-		End:   time.Date(end.Year(), end.Month(), end.Day(), 19, 0, 0, 0, time.Local),
-	})
-
-	for i := 1; i <= 7; i++ {
+	for i := 0; i <= 7; i++ {
 		d := end.AddDate(0, 0, i)
 		if d.Weekday() == 0 || d.Weekday() == 6 {
 			continue
 		}
 
+		startHour := 10
+		if i == 0 {
+			hour := time.Now().Hour()
+			if hour >= 19 {
+				continue
+			} else if hour > 10 {
+				startHour = hour
+			}
+		}
+
 		periods = append(periods, garoon.DateTimePeriod{
-			Start: time.Date(d.Year(), d.Month(), d.Day(), 10, 0, 0, 0, time.Local),
+			Start: time.Date(d.Year(), d.Month(), d.Day(), startHour, 0, 0, 0, time.Local),
 			End:   time.Date(d.Year(), d.Month(), d.Day(), 19, 0, 0, 0, time.Local),
 		})
 	}
