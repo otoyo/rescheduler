@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,6 +22,23 @@ type interactionHandler struct {
 	garoonClient                *garoon.Client
 	garoonExcludingFacilityCode string
 	verificationToken           string
+}
+
+type AvailableTimes []garoon.AvailableTime
+
+func (a AvailableTimes) Len() int {
+	return len(a)
+}
+
+func (a AvailableTimes) Swap(i, j int) {
+	a[i], a[j] = a[j], a[i]
+}
+
+func (a AvailableTimes) Less(i, j int) bool {
+	if a[i].Start.DateTime.Equal(a[j].Start.DateTime) {
+		return a[i].Facility.Code < a[j].Facility.Code
+	}
+	return a[i].Start.DateTime.Before(a[j].Start.DateTime)
 }
 
 func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -214,6 +232,11 @@ func (h interactionHandler) searchAvailableTimes(ev *garoon.Event) (*[]garoon.Av
 		log.Printf("[ERROR] failed to get AvailableTimes: %s", err)
 		return nil, err
 	}
+
+	// Sort by datetime asc
+	var availableTimes AvailableTimes
+	availableTimes = pager.AvailableTimes
+	sort.Sort(availableTimes)
 
 	return &pager.AvailableTimes, nil
 }
