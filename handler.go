@@ -15,6 +15,7 @@ import (
 // interactionHandler handles interactive message response.
 type interactionHandler struct {
 	slackClient       *slack.Client
+	garoonClient      *garoon.Client
 	verificationToken string
 }
 

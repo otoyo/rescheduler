@@ -75,6 +75,7 @@ func _main(args []string) int {
 	// responses from slack (kicked by user action)
 	http.Handle("/interaction", interactionHandler{
 		verificationToken: env.SlackVerificationToken,
+		garoonClient:      garoonClient,
 	})
 
 	log.Printf("[INFO] Server listening on :%s", env.Port)
