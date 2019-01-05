@@ -29,6 +29,9 @@ type envConfig struct {
 	// Bot responses to the mention in this channel.
 	SlackChannelID string `envconfig:"SLACK_CHANNEL_ID" required:"true"`
 
+	// SlackUserID is your slack user ID.
+	SlackUserID string `envconfig:"SLACK_USER_ID" required:"true"`
+
 	// GaroonURL is URL for Garoon REST API
 	GaroonSubdomain string `envconfig:"GAROON_SUBDOMAIN" required:"true"`
 
@@ -63,6 +66,7 @@ func _main(args []string) int {
 		client:       slackClient,
 		botID:        env.SlackBotID,
 		channelID:    env.SlackChannelID,
+		ownerID:      env.SlackUserID,
 		garoonClient: garoonClient,
 	}
 	go slackListener.ListenAndResponse()

@@ -20,6 +20,7 @@ type SlackListener struct {
 	client       *slack.Client
 	botID        string
 	channelID    string
+	ownerID      string
 	garoonClient *garoon.Client
 }
 
