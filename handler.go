@@ -77,18 +77,30 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Overwrite original message.
-	originalMessage := message.OriginalMessage
-	originalMessage.ReplaceOriginal = true
-	originalMessage.ResponseType = "in_channel"
+	message.OriginalMessage.ReplaceOriginal = true
+	message.OriginalMessage.ResponseType = "in_channel"
+
+	go h.asyncResponse(message)
+
+	text := ":ok: Please wait."
+	responseMessage(w, message.OriginalMessage, text, "")
+	return
+}
+
+func (h interactionHandler) asyncResponse(message slack.AttachmentActionCallback) {
+	if len(message.OriginalMessage.Attachments) == 0 {
+		log.Printf("[ERROR] no attachments in actionSelectTarget")
+		return
+	}
+	attachment := &message.OriginalMessage.Attachments[0]
+	attachment.Title = ""
+	attachment.Text = ""
+	attachment.Fields = nil
+	attachment.Actions = nil
 
 	action := message.Actions[0]
 	switch action.Name {
 	case actionSelectTarget:
-		if len(originalMessage.Attachments) == 0 {
-			log.Printf("[ERROR] no attachments in actionSelectTarget")
-			return
-		}
-
 		eventID := action.SelectedOptions[0].Value
 		ev, err := h.garoonClient.FindEvent(eventID)
 		if err != nil {
@@ -96,16 +108,10 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		attachment := &originalMessage.Attachments[0]
 		if err = h.setupAttachment(message.User.ID, ev, attachment); err != nil {
 			log.Printf("[ERROR] failed to setup attachment: %s", err)
 			return
 		}
-
-		w.Header().Add("Content-type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(&originalMessage)
-		return
 	case actionSelectTime:
 		s := strings.Split(action.SelectedOptions[0].Value, ",")
 
@@ -114,34 +120,34 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		title := "The schedule has been rescheduled! :white_check_mark:"
-		responseMessage(w, originalMessage, title, "")
-		return
+		attachment.Title = "The schedule has been rescheduled! :white_check_mark:"
 	case actionCancel:
-		title := fmt.Sprintf("@%s canceled.", message.User.Name)
-		responseMessage(w, originalMessage, title, "")
-		return
+		attachment.Title = fmt.Sprintf("@%s canceled.", message.User.Name)
 	default:
 		log.Printf("[ERROR] ]Invalid action was submitted: %s", action.Name)
-		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	params := slack.PostMessageParameters{
+		Attachments: []slack.Attachment{
+			*attachment,
+		},
+	}
+
+	if _, _, err := h.slackClient.PostMessage(message.Channel.ID, "", params); err != nil {
+		log.Printf("failed to post message: %s", err)
 		return
 	}
 }
 
 // responseMessage response to the original slackbutton enabled message.
 // It removes button and replace it with message which indicate how bot will work
-func responseMessage(w http.ResponseWriter, original slack.Message, title, value string) {
+func responseMessage(w http.ResponseWriter, original slack.Message, text, value string) {
 	if len(original.Attachments) == 0 {
 		original.Attachments = append(original.Attachments, slack.Attachment{})
 	}
 	original.Attachments[0].Actions = []slack.AttachmentAction{} // empty buttons
-	original.Attachments[0].Fields = []slack.AttachmentField{
-		{
-			Title: title,
-			Value: value,
-			Short: false,
-		},
-	}
+	original.Attachments[0].Text = text
 
 	w.Header().Add("Content-type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -150,14 +156,12 @@ func responseMessage(w http.ResponseWriter, original slack.Message, title, value
 
 func (h interactionHandler) setupAttachment(messageUserID string, ev *garoon.Event, attachment *slack.Attachment) error {
 	if ev.IsAllDay || ev.IsStartOnly {
-		attachment.Text = "No end MTG does not supported."
-		attachment.Actions = nil
+		attachment.Title = "No end MTG does not supported."
 		return nil
 	}
 
 	if len(ev.Facilities) > 1 {
-		attachment.Text = "Multiple MTG rooms does not supported."
-		attachment.Actions = nil
+		attachment.Title = "Multiple MTG rooms does not supported."
 		return nil
 	}
 
@@ -169,7 +173,6 @@ func (h interactionHandler) setupAttachment(messageUserID string, ev *garoon.Eve
 
 	if len(*availableTimes) == 0 {
 		attachment.Title = "No schedules found."
-		attachment.Actions = nil
 		return nil
 	}
 
@@ -192,7 +195,6 @@ func (h interactionHandler) setupAttachment(messageUserID string, ev *garoon.Eve
 
 	if messageUserID != h.ownerSlackID {
 		attachment.Title = fmt.Sprintf("%d schedules found.", len(*availableTimes))
-		attachment.Actions = nil
 		return nil
 	}
 

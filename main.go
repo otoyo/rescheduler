@@ -78,6 +78,7 @@ func _main(args []string) int {
 	// responses from slack (kicked by user action)
 	http.Handle("/interaction", interactionHandler{
 		verificationToken:           env.SlackVerificationToken,
+		slackClient:                 slackClient,
 		ownerSlackID:                env.SlackUserID,
 		garoonClient:                garoonClient,
 		garoonExcludingFacilityCode: env.GaroonExcludingFacilityCode,
