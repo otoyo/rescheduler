@@ -113,14 +113,18 @@ func (h interactionHandler) asyncResponse(message slack.AttachmentActionCallback
 			return
 		}
 	case actionSelectTime:
-		s := strings.Split(action.SelectedOptions[0].Value, ",")
+		if message.User.ID != h.ownerSlackID {
+			attachment.Title = ":x: You are not permitted."
+		} else {
+			s := strings.Split(action.SelectedOptions[0].Value, ",")
 
-		if err := h.updateEvent(s[0], s[1], s[2], s[3]); err != nil {
-			log.Printf("[ERROR] failed to update the event: %s", err)
-			return
+			if err := h.updateEvent(s[0], s[1], s[2], s[3]); err != nil {
+				log.Printf("[ERROR] failed to update the event: %s", err)
+				return
+			}
+
+			attachment.Title = "The schedule has been rescheduled! :white_check_mark:"
 		}
-
-		attachment.Title = "The schedule has been rescheduled! :white_check_mark:"
 	case actionCancel:
 		attachment.Title = fmt.Sprintf("@%s canceled.", message.User.Name)
 	default:
