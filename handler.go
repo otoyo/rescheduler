@@ -176,7 +176,7 @@ func (h interactionHandler) setupAttachment(messageUserID string, ev *garoon.Eve
 	}
 
 	if len(*availableTimes) == 0 {
-		attachment.Title = "No schedules found."
+		attachment.Title = "Could not find a date to reschedule."
 		return nil
 	}
 
