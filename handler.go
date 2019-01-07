@@ -175,7 +175,7 @@ func (h interactionHandler) setupAttachment(messageUserID string, ev *garoon.Eve
 		return err
 	}
 
-	if len(*availableTimes) == 0 {
+	if len(availableTimes) == 0 {
 		attachment.Title = "Could not find a date to reschedule."
 		return nil
 	}
@@ -185,7 +185,7 @@ func (h interactionHandler) setupAttachment(messageUserID string, ev *garoon.Eve
 	var text string
 	var options []slack.AttachmentActionOption
 
-	for _, t := range *availableTimes {
+	for _, t := range availableTimes {
 		start := t.Start.DateTime
 		end := t.End.DateTime
 
@@ -198,7 +198,7 @@ func (h interactionHandler) setupAttachment(messageUserID string, ev *garoon.Eve
 	attachment.Text = text
 
 	if messageUserID != h.ownerSlackID {
-		attachment.Title = fmt.Sprintf("%d schedules found.", len(*availableTimes))
+		attachment.Title = fmt.Sprintf("%d schedules found.", len(availableTimes))
 		return nil
 	}
 
@@ -220,8 +220,8 @@ func (h interactionHandler) setupAttachment(messageUserID string, ev *garoon.Eve
 	return nil
 }
 
-func (h interactionHandler) searchAvailableTimes(ev *garoon.Event) (*[]garoon.AvailableTime, error) {
-	facilities, err := h.getFacilitiesFromOwnFacilityGroup(&ev.Facilities)
+func (h interactionHandler) searchAvailableTimes(ev *garoon.Event) ([]garoon.AvailableTime, error) {
+	facilities, err := h.getFacilitiesFromOwnFacilityGroup(ev.Facilities)
 	if err != nil {
 		log.Printf("[ERROR] failed to get facilities: %s", err)
 		return nil, err
@@ -244,10 +244,10 @@ func (h interactionHandler) searchAvailableTimes(ev *garoon.Event) (*[]garoon.Av
 	availableTimes = pager.AvailableTimes
 	sort.Sort(availableTimes)
 
-	return &pager.AvailableTimes, nil
+	return pager.AvailableTimes, nil
 }
 
-func (h interactionHandler) buildAvailableTimeParameter(ev *garoon.Event, facilities *[]garoon.Facility) (*garoon.AvailableTimeParameter, error) {
+func (h interactionHandler) buildAvailableTimeParameter(ev *garoon.Event, facilities []garoon.Facility) (*garoon.AvailableTimeParameter, error) {
 	ranges, err := h.buildTimeRanges(ev)
 	if err != nil {
 		return nil, err
@@ -256,17 +256,17 @@ func (h interactionHandler) buildAvailableTimeParameter(ev *garoon.Event, facili
 	interval := ev.End.DateTime.Sub(ev.Start.DateTime)
 
 	param := garoon.AvailableTimeParameter{
-		TimeRanges:              *ranges,
+		TimeRanges:              ranges,
 		TimeInterval:            fmt.Sprintf("%2.0f", interval.Minutes()),
 		Attendees:               ev.Attendees,
-		Facilities:              *facilities,
+		Facilities:              facilities,
 		FacilitySearchCondition: "OR",
 	}
 
 	return &param, nil
 }
 
-func (h interactionHandler) buildTimeRanges(ev *garoon.Event) (*[]garoon.DateTimePeriod, error) {
+func (h interactionHandler) buildTimeRanges(ev *garoon.Event) ([]garoon.DateTimePeriod, error) {
 	periods := []garoon.DateTimePeriod{}
 
 	end := ev.End.DateTime
@@ -292,16 +292,16 @@ func (h interactionHandler) buildTimeRanges(ev *garoon.Event) (*[]garoon.DateTim
 		})
 	}
 
-	return &periods, nil
+	return periods, nil
 }
 
-func (h interactionHandler) getFacilitiesFromOwnFacilityGroup(facilities *[]garoon.Facility) (*[]garoon.Facility, error) {
-	if len(*facilities) == 0 {
+func (h interactionHandler) getFacilitiesFromOwnFacilityGroup(facilities []garoon.Facility) ([]garoon.Facility, error) {
+	if len(facilities) == 0 {
 		return nil, nil
 	}
 
 	v := url.Values{}
-	v.Add("name", (*facilities)[0].Name)
+	v.Add("name", facilities[0].Name)
 
 	pager, err := h.garoonClient.GetFacilities(v)
 	if err != nil {
@@ -334,7 +334,7 @@ func (h interactionHandler) getFacilitiesFromOwnFacilityGroup(facilities *[]garo
 		}
 	}
 
-	return &filteredFacilities, nil
+	return filteredFacilities, nil
 }
 
 func (h interactionHandler) updateEvent(eventID, start, end, facilityID string) error {
