@@ -87,8 +87,8 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		subject := strings.SplitN(action.SelectedOptions[0].Value, ",", 2)[1]
 		text = fmt.Sprintf(":ok: %s was selected.\nPlease wait.", subject)
 	case actionSelectTime:
-		start := strings.Split(action.SelectedOptions[0].Value, ",")[0]
-		text = fmt.Sprintf(":ok: %s was selected.\nPlease wait.", start)
+		start, _ := time.Parse("2006-01-02T15:04:05-07:00", strings.Split(action.SelectedOptions[0].Value, ",")[1])
+		text = fmt.Sprintf(":ok: %s was selected.\nPlease wait.", start.Format("2006-01-02 15:04"))
 	case actionCancel:
 		text = fmt.Sprintf("@%s canceled.", message.User.Name)
 		return
