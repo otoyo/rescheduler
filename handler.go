@@ -80,10 +80,25 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	message.OriginalMessage.ReplaceOriginal = true
 	message.OriginalMessage.ResponseType = "in_channel"
 
-	go h.asyncResponse(message)
-
-	text := ":ok: Please wait."
+	var text string
+	action := message.Actions[0]
+	switch action.Name {
+	case actionSelectTarget:
+		subject := strings.SplitN(action.SelectedOptions[0].Value, ",", 2)[1]
+		text = fmt.Sprintf(":ok: %s was selected.\nPlease wait.", subject)
+	case actionSelectTime:
+		start := strings.Split(action.SelectedOptions[0].Value, ",")[0]
+		text = fmt.Sprintf(":ok: %s was selected.\nPlease wait.", start)
+	case actionCancel:
+		text = fmt.Sprintf("@%s canceled.", message.User.Name)
+		return
+	default:
+		log.Printf("[ERROR] ]Invalid action was submitted: %s", action.Name)
+		return
+	}
 	responseMessage(w, message.OriginalMessage, text, "")
+
+	go h.asyncResponse(message)
 	return
 }
 
@@ -101,7 +116,7 @@ func (h interactionHandler) asyncResponse(message slack.AttachmentActionCallback
 	action := message.Actions[0]
 	switch action.Name {
 	case actionSelectTarget:
-		eventID := action.SelectedOptions[0].Value
+		eventID := strings.SplitN(action.SelectedOptions[0].Value, ",", 2)[0]
 		ev, err := h.garoonClient.FindEvent(eventID)
 		if err != nil {
 			log.Printf("[ERROR] failed to find the event: %s", err)
