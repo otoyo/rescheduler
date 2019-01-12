@@ -242,27 +242,29 @@ func (h interactionHandler) searchAvailableTimes(ev *garoon.Event) ([]garoon.Ava
 		return nil, err
 	}
 
-	param, err := h.buildAvailableTimeParameter(ev, facilities)
+	params, err := h.buildAvailableTimeParameters(ev, facilities)
 	if err != nil {
 		log.Printf("[ERROR] failed to build AvailableTimeParamter: %s", err)
 		return nil, err
 	}
 
-	pager, err := h.garoonClient.SearchAvailableTimes(param)
-	if err != nil {
-		log.Printf("[ERROR] failed to get AvailableTimes: %s", err)
-		return nil, err
+	var availableTimes AvailableTimes
+	for _, param := range params {
+		pager, err := h.garoonClient.SearchAvailableTimes(&param)
+		if err != nil {
+			log.Printf("[ERROR] failed to get AvailableTimes: %s", err)
+			return nil, err
+		}
+		availableTimes = append(availableTimes, pager.AvailableTimes...)
 	}
 
 	// Sort by datetime asc
-	var availableTimes AvailableTimes
-	availableTimes = pager.AvailableTimes
 	sort.Sort(availableTimes)
 
-	return pager.AvailableTimes, nil
+	return availableTimes, nil
 }
 
-func (h interactionHandler) buildAvailableTimeParameter(ev *garoon.Event, facilities []garoon.Facility) (*garoon.AvailableTimeParameter, error) {
+func (h interactionHandler) buildAvailableTimeParameters(ev *garoon.Event, facilities []garoon.Facility) ([]garoon.AvailableTimeParameter, error) {
 	ranges, err := h.buildTimeRanges(ev)
 	if err != nil {
 		return nil, err
@@ -270,15 +272,19 @@ func (h interactionHandler) buildAvailableTimeParameter(ev *garoon.Event, facili
 
 	interval := ev.End.DateTime.Sub(ev.Start.DateTime)
 
-	param := garoon.AvailableTimeParameter{
-		TimeRanges:              ranges,
-		TimeInterval:            fmt.Sprintf("%2.0f", interval.Minutes()),
-		Attendees:               ev.Attendees,
-		Facilities:              facilities,
-		FacilitySearchCondition: "OR",
+	var params []garoon.AvailableTimeParameter
+	for _, r := range ranges {
+		param := garoon.AvailableTimeParameter{
+			TimeRanges:              []garoon.DateTimePeriod{r},
+			TimeInterval:            fmt.Sprintf("%2.0f", interval.Minutes()),
+			Attendees:               ev.Attendees,
+			Facilities:              facilities,
+			FacilitySearchCondition: "OR",
+		}
+		params = append(params, param)
 	}
 
-	return &param, nil
+	return params, nil
 }
 
 func (h interactionHandler) buildTimeRanges(ev *garoon.Event) ([]garoon.DateTimePeriod, error) {
