@@ -90,8 +90,6 @@ func (h interactionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		start, _ := time.Parse("2006-01-02T15:04:05-07:00", strings.Split(action.SelectedOptions[0].Value, ",")[1])
 		text = fmt.Sprintf(":ok: %s was selected.\nPlease wait.", start.Format("2006-01-02 15:04"))
 	case actionCancel:
-		text = fmt.Sprintf("@%s canceled.", message.User.Name)
-		return
 	default:
 		log.Printf("[ERROR] ]Invalid action was submitted: %s", action.Name)
 		return
@@ -166,7 +164,9 @@ func responseMessage(w http.ResponseWriter, original slack.Message, text, value 
 		original.Attachments = append(original.Attachments, slack.Attachment{})
 	}
 	original.Attachments[0].Actions = []slack.AttachmentAction{} // empty buttons
-	original.Attachments[0].Text = text
+	if text != "" {
+		original.Attachments[0].Text = text
+	}
 
 	w.Header().Add("Content-type", "application/json")
 	w.WriteHeader(http.StatusOK)
